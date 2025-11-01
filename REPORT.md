@@ -5,7 +5,7 @@ This report explains, in plain language, what the application does, how it was d
 ### What this app does
 
 - **Goal**: Go through a parent folder’s subfolders, find Word `.docx` files, extract only the **Summary** section from each, and merge them into a single Word document.
-- **Keeps formatting**: Fonts, text styles, and images (including image shttps://github.com/yvzfth/docx_merge.gitizes) are preserved.
+- **Keeps formatting**: Fonts, text styles, and images (including image sizes) are preserved.
 - **Labels each section**: The Summary heading is annotated with its source file name, like `Summary (document9.docx)`.
 - **Order you expect**: Files are ordered using a human-friendly (natural) sort, so `document10.docx` correctly comes after `document9.docx`.
 - **Simple to run**: You pass the parent folder to scan, and the merged file is saved inside that folder by default.
@@ -46,32 +46,32 @@ This report explains, in plain language, what the application does, how it was d
 - Activate the included virtual environment (optional but recommended):
 
 ```bash
-source /Users/fatih/Desktop/docx/venv/bin/activate
+source ~/Desktop/docx/venv/bin/activate
 ```
 
 - Run the tool with the parent folder as a positional argument:
 
 ```bash
-/Users/fatih/Desktop/docx/venv/bin/python /Users/fatih/Desktop/docx/main.py \
-  "/Users/fatih/Desktop/docx"
+~/Desktop/docx/venv/bin/python ~/Desktop/docx/main.py \
+  "~/Desktop/docx"
 ```
 
-- The output is saved to: `/Users/fatih/Desktop/docx/collected_summaries.docx`
+- The output is saved to: `~/Desktop/docx/collected_summaries.docx`
 
 - Include `.docx` files located directly in the parent folder as well:
 
 ```bash
-/Users/fatih/Desktop/docx/venv/bin/python /Users/fatih/Desktop/docx/main.py \
-  "/Users/fatih/Desktop/docx" \
+~/Desktop/docx/venv/bin/python ~/Desktop/docx/main.py \
+  "~/Desktop/docx" \
   --include-root
 ```
 
 - Choose a custom output filename (optional):
 
 ```bash
-/Users/fatih/Desktop/docx/venv/bin/python /Users/fatih/Desktop/docx/main.py \
-  "/Users/fatih/Desktop/docx" \
-  --output "/Users/fatih/Desktop/docx/custom_output.docx"
+~/Desktop/docx/venv/bin/python ~/Desktop/docx/main.py \
+  "~/Desktop/docx" \
+  --output "~/Desktop/docx/custom_output.docx"
 ```
 
 ### Installation guide (Windows & macOS)

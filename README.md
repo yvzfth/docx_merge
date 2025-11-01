@@ -51,7 +51,7 @@ Collect only the "Summary" section from multiple `.docx` files located in subfol
 ### Activate the virtual environment (optional but recommended)
 
 ```bash
-source /Users/fatih/Desktop/docx/venv/bin/activate
+source ~/Desktop/docx/venv/bin/activate
 ```
 
 ### Usage
@@ -59,24 +59,24 @@ source /Users/fatih/Desktop/docx/venv/bin/activate
 Pass the parent folder as a positional argument. By default, the output is written to `<parent>/collected_summaries.docx`.
 
 ```bash
-/Users/fatih/Desktop/docx/venv/bin/python /Users/fatih/Desktop/docx/main.py \
-  "/Users/fatih/Desktop/docx"
+~/Desktop/docx/venv/bin/python ~/Desktop/docx/main.py \
+  "~/Desktop/docx"
 ```
 
 Include `.docx` files directly under the parent folder as well (not just subfolders):
 
 ```bash
-/Users/fatih/Desktop/docx/venv/bin/python /Users/fatih/Desktop/docx/main.py \
-  "/Users/fatih/Desktop/docx" \
+~/Desktop/docx/venv/bin/python ~/Desktop/docx/main.py \
+  "~/Desktop/docx" \
   --include-root
 ```
 
 Override the output path if needed:
 
 ```bash
-/Users/fatih/Desktop/docx/venv/bin/python /Users/fatih/Desktop/docx/main.py \
-  "/Users/fatih/Desktop/docx" \
-  --output "/Users/fatih/Desktop/docx/custom_output.docx"
+~/Desktop/docx/venv/bin/python ~/Desktop/docx/main.py \
+  "~/Desktop/docx" \
+  --output "~/Desktop/docx/custom_output.docx"
 ```
 
 ### How it works (high level)
