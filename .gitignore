@@ -1,0 +1,16 @@
+# Virtual environment
+venv/
+
+# Ignore specific subfolders
+subfolder1/
+subfolder2/
+subfolder3/
+subfolder4/
+subfolder5/
+subfolder6/
+subfolder7/
+subfolder8/
+subfolder9/
+subfolder10/
+
+
