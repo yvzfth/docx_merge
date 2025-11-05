@@ -13,18 +13,21 @@ import sys
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union, Callable
 
 from docx import Document
 from docxcompose.composer import Composer
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.table import Table
+from docx.table import _Cell as TableCell  # type: ignore
 from docx.text.paragraph import Paragraph
 
 BlockItem = Union[Paragraph, Table]
 P_TAG = qn("w:p")
 TBL_TAG = qn("w:tbl")
+W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
 
 def _clear_document(doc: Document) -> None:
@@ -48,37 +51,146 @@ def _iter_block_items(doc: Document) -> List[BlockItem]:
     return blocks
 
 
-def _select_summary_anchor(blocks: Sequence[BlockItem]) -> Optional[int]:
-    """Find the most likely block index containing the Summary heading.
+def _para_is_heading_like(p: Paragraph) -> bool:
+    """Heuristic for whether a paragraph is a section heading.
 
-    Heuristic: prefer heading-styled paragraphs and ones near the edges
-    (top/bottom), since summaries are commonly at the beginning or end.
+    Uses style name (Heading X) or presence of w:outlineLvl.
     """
 
-    hits: List[Tuple[int, int, int]] = []
+    try:
+        style_name = p.style.name if p.style is not None else ""
+    except Exception:
+        style_name = ""
+    style_lower = style_name.lower()
+    if style_lower.startswith("heading"):
+        return True
+    # Check outline level in XML
+    try:
+        has_outline = bool(p._element.xpath('./w:pPr/w:outlineLvl', namespaces={"w": W_NS}))  # type: ignore[attr-defined]
+        if has_outline:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _paragraph_has_summary(p: Paragraph) -> Tuple[bool, bool]:
+    """Return (has_summary_text, is_heading_like) for a paragraph."""
+
+    text = p.text.strip()
+    if not text:
+        return False, False
+    lower = text.lower()
+    if "summary" not in lower:
+        return False, False
+    # For anchor preference, treat true headings and styles containing "Title" as heading-like
+    is_heading_like = _para_is_heading_like(p)
+    try:
+        style_name = p.style.name if p.style is not None else ""
+        if "title" in style_name.lower():
+            is_heading_like = True
+    except Exception:
+        pass
+    return True, is_heading_like
+
+
+def _paragraph_heading_level(p: Paragraph) -> Optional[int]:
+    """Return heading level (0-based) if paragraph is a heading, else None.
+
+    Uses w:outlineLvl when present; otherwise infers from style name like
+    "Heading 1", "Heading 2", or treats "Title" as level 0.
+    """
+
+    # Prefer explicit outline level
+    try:
+        nodes = p._element.xpath('./w:pPr/w:outlineLvl', namespaces={"w": W_NS})  # type: ignore[attr-defined]
+        if nodes:
+            # outlineLvl@val: 0 => Heading 1, 1 => Heading 2, ...
+            node = nodes[0]
+            val = node.get(qn('w:val'))  # type: ignore[arg-type]
+            if val is not None and val.isdigit():
+                return int(val)
+    except Exception:
+        pass
+
+    # Fallback: parse style name
+    try:
+        style_name = p.style.name if p.style is not None else ""
+    except Exception:
+        style_name = ""
+    lower = style_name.lower()
+    if lower.startswith("heading"):
+        m = re.search(r"(\d+)$", style_name.strip())
+        if m:
+            # Heading 1 => level 0
+            return max(0, int(m.group(1)) - 1)
+        # Generic "Heading" without number: treat as level 0
+        return 0
+    if "title" in lower:
+        return 0
+    return None
+
+
+def _element_text_contains_summary(el: OxmlElement) -> bool:
+    """Deep-scan an XML element for any text node containing 'summary' (case-insensitive).
+
+    Captures text inside text boxes (w:txbxContent), SDTs, and nested structures.
+    """
+
+    try:
+        for t in el.xpath('.//w:t', namespaces={"w": W_NS}):  # type: ignore[attr-defined]
+            text = (t.text or '').strip().lower()
+            if 'summary' in text:
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _block_contains_summary_deep(block: BlockItem) -> Tuple[bool, bool]:
+    """Return (has_summary_text_anywhere, is_heading_like) for a block.
+
+    - For Paragraph: check paragraph text first, then deep scan descendants.
+    - For Table: deep scan the XML; heading-likeness defaults to False.
+    """
+
+    if isinstance(block, Paragraph):
+        found, is_heading_like = _paragraph_has_summary(block)
+        if found:
+            return True, is_heading_like
+        return _element_text_contains_summary(block._element), False  # type: ignore[attr-defined]
+    if isinstance(block, Table):
+        return _element_text_contains_summary(block._element), False  # type: ignore[attr-defined]
+    return False, False
+
+
+def _select_summary_anchor(blocks: Sequence[BlockItem]) -> Optional[Tuple[int, bool]]:
+    """Find the most likely block index containing the Summary heading.
+
+    Returns (index, is_table). Heuristic prefers heading-styled content and
+    blocks near the top/bottom.
+    """
+
+    hits: List[Tuple[int, int, int, bool]] = []
     total = len(blocks)
     if total == 0:
         return None
 
     for idx, block in enumerate(blocks):
-        if not isinstance(block, Paragraph):
+        found, heading_like = _block_contains_summary_deep(block)
+        is_table = isinstance(block, Table)
+        if not found:
             continue
-        text = block.text.strip()
-        if not text:
-            continue
-        lower = text.lower()
-        if "summary" not in lower:
-            continue
-        style_name = block.style.name if block.style is not None else ""
-        heading_priority = 0 if "heading" in style_name.lower() else 1
+        heading_priority = 0 if heading_like else 1
         edge_distance = min(idx, total - idx - 1)
-        hits.append((heading_priority, edge_distance, idx))
+        hits.append((heading_priority, edge_distance, idx, is_table))
 
     if not hits:
         return None
 
     hits.sort()
-    return hits[0][2]
+    _, _, idx, is_table = hits[0]
+    return idx, is_table
 
 
 def _locate_summary_range(blocks: Sequence[BlockItem]) -> Optional[Tuple[int, int]]:
@@ -88,9 +200,15 @@ def _locate_summary_range(blocks: Sequence[BlockItem]) -> Optional[Tuple[int, in
     (exclusive) or the document end.
     """
 
-    anchor = _select_summary_anchor(blocks)
-    if anchor is None:
+    anchor_info = _select_summary_anchor(blocks)
+    if anchor_info is None:
         return None
+    anchor, anchor_is_table = anchor_info
+
+    # Determine the anchor heading level when the anchor is a paragraph.
+    anchor_level: Optional[int] = None
+    if isinstance(blocks[anchor], Paragraph):
+        anchor_level = _paragraph_heading_level(blocks[anchor])
 
     end_idx = anchor + 1
     total = len(blocks)
@@ -98,11 +216,13 @@ def _locate_summary_range(blocks: Sequence[BlockItem]) -> Optional[Tuple[int, in
     for idx in range(anchor + 1, total):
         block = blocks[idx]
         if isinstance(block, Paragraph):
-            style_name = block.style.name if block.style is not None else ""
             text = block.text.strip()
             lower = text.lower()
-            if style_name and style_name.lower().startswith("heading") and "summary" not in lower:
-                break
+            if _para_is_heading_like(block) and "summary" not in lower:
+                # Stop at the next heading whose level is same or higher (<= anchor level).
+                next_level = _paragraph_heading_level(block)
+                if anchor_level is None or (next_level is not None and next_level <= anchor_level):
+                    break
         end_idx = idx + 1
 
     return anchor, end_idx
@@ -257,6 +377,9 @@ def collect_summaries(
     target_root: Path,
     output_path: Path,
     include_root_files: bool = False,
+    on_progress: Optional[Callable[[int, int, Optional[Path]], None]] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
+    errors: Optional[List[str]] = None,
 ) -> int:
     """Collect Summary sections from DOCX files under ``target_root``.
 
@@ -266,11 +389,24 @@ def collect_summaries(
 
     docx_files = _gather_docx_files(target_root, include_root_files, output_path)
 
+    total = len(docx_files)
+    if on_progress is not None:
+        on_progress(0, total, None)
+
     summary_docs: List[Document] = []
-    for docx_path in docx_files:
-        summary_doc = _extract_summary_document(docx_path)
-        if summary_doc is not None:
-            summary_docs.append(summary_doc)
+    for idx, docx_path in enumerate(docx_files, start=1):
+        if should_cancel is not None and should_cancel():
+            raise TimeoutError("Operation was cancelled or timed out.")
+        try:
+            summary_doc = _extract_summary_document(docx_path)
+            if summary_doc is not None:
+                summary_docs.append(summary_doc)
+        except Exception as exc:
+            if errors is not None:
+                errors.append(f"{docx_path}: {exc}")
+        finally:
+            if on_progress is not None:
+                on_progress(idx, total, docx_path)
 
     if not summary_docs:
         doc = Document()

@@ -79,6 +79,53 @@ Override the output path if needed:
   --output "~/Desktop/docx/custom_output.docx"
 ```
 
+### Graphical User Interface (GUI)
+
+If you prefer a windowed app, launch the GUI:
+
+```bash
+~/Desktop/docx/venv/bin/python ~/Desktop/docx/gui.py
+```
+
+- Select the parent folder containing subfolders with `.docx` files.
+- Optionally check "Include .docx files directly in the parent folder".
+- Choose an output file (defaults to `collected_summaries.docx` under the parent).
+- Click "Collect Summaries". The app runs in the background and shows status.
+
+### Build Executables (macOS & Windows)
+
+You can package the GUI into a standalone app using PyInstaller. Build on each OS to create native binaries for that OS.
+
+#### macOS
+
+1) Ensure Python 3.10+ and developer tools are installed.
+2) From the project root:
+
+```bash
+chmod +x scripts/build_macos.sh
+scripts/build_macos.sh
+```
+
+Output: `dist/SummaryCollector.app`
+
+Notes:
+- First run may be blocked by Gatekeeper. Control-click the app → Open.
+- To share, zip the `.app` or run a DMG packager if desired.
+
+#### Windows
+
+Open PowerShell in the project root and run:
+
+```powershell
+PowerShell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+```
+
+Output: `dist\SummaryCollector\SummaryCollector.exe`
+
+Notes:
+- If SmartScreen warns, choose “More info” → “Run anyway”.
+- Ship the entire folder under `dist\SummaryCollector` or re-run with `--onefile` (advanced).
+
 ### How it works (high level)
 
 1. Each source document is parsed and its block-level elements (paragraphs, tables) are enumerated.

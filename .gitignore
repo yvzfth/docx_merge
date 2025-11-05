@@ -1,3 +1,36 @@
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Python cache/bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Build artifacts (PyInstaller, etc.)
+build/
+dist/
+*.spec
+
+# Test/coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor/IDE settings
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Project outputs
+collected_summaries.docx
 # Virtual environment
 venv/
 
@@ -13,4 +46,4 @@ subfolder8/
 subfolder9/
 subfolder10/
 
-
+dist/
