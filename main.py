@@ -131,6 +131,107 @@ def _paragraph_heading_level(p: Paragraph) -> Optional[int]:
     return None
 
 
+def _text_is_headingish(text: str) -> bool:
+    """Heuristic for whether plain text looks like a section heading."""
+
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if len(stripped) > 90:
+        return False
+    words = stripped.split()
+    if len(words) > 15:
+        return False
+    terminal = stripped[-1]
+    if terminal in ".!?;":
+        return False
+    punctuation_hits = sum(1 for ch in stripped if ch in ".!?;")
+    if punctuation_hits >= 2:
+        return False
+    return True
+
+
+def _paragraph_font_size_hint(p: Paragraph) -> Optional[int]:
+    """Return an effective font size hint in half-points for a paragraph.
+
+    Priority order (max taken across):
+    1) Explicit run sizes (p.runs[*].font.size)
+    2) Paragraph default run properties (XML w:pPr/w:rPr/w:sz)
+    3) Run rPr sizes via XML (w:r/w:rPr/w:sz)
+    4) Paragraph style's font.size, following base_style chain
+    """
+
+    def _len_to_half_points(val: object) -> Optional[int]:
+        # Convert python-docx Length values or numeric-like to half-points
+        try:
+            # python-docx Length has .pt property returning float points
+            pt = getattr(val, "pt", None)
+            if pt is not None:
+                return int(round(float(pt) * 2))
+            # Sometimes it's already an int representing EMUs or half-points; best-effort
+            if isinstance(val, (int, float)):
+                # Assume points if small, else assume already half-points
+                if float(val) < 100:  # likely points
+                    return int(round(float(val) * 2))
+                return int(val)
+        except Exception:
+            return None
+        return None
+
+    def _style_chain_size_half_points(style_obj) -> Optional[int]:
+        seen = set()
+        cur = style_obj
+        while cur is not None and id(cur) not in seen:
+            seen.add(id(cur))
+            try:
+                sz = getattr(getattr(cur, "font", None), "size", None)
+                hp = _len_to_half_points(sz)
+                if hp is not None:
+                    return hp
+                cur = getattr(cur, "base_style", None)
+            except Exception:
+                break
+        return None
+
+    try:
+        sizes: List[int] = []
+
+        # 1) Explicit run sizes via python-docx API
+        try:
+            for run in getattr(p, "runs", []) or []:
+                hp = _len_to_half_points(getattr(getattr(run, "font", None), "size", None))
+                if hp is not None:
+                    sizes.append(hp)
+        except Exception:
+            pass
+
+        # 2) Paragraph default run properties size (XML)
+        for node in p._element.xpath('./w:pPr/w:rPr/w:sz', namespaces={"w": W_NS}):  # type: ignore[attr-defined]
+            val = node.get(qn('w:val'))  # type: ignore[arg-type]
+            if val is not None and val.isdigit():
+                sizes.append(int(val))
+
+        # 3) Individual run sizes (XML)
+        for node in p._element.xpath('.//w:r/w:rPr/w:sz', namespaces={"w": W_NS}):  # type: ignore[attr-defined]
+            val = node.get(qn('w:val'))  # type: ignore[arg-type]
+            if val is not None and val.isdigit():
+                sizes.append(int(val))
+
+        # 4) Style chain size
+        try:
+            style_hp = _style_chain_size_half_points(getattr(p, "style", None))
+            if style_hp is not None:
+                sizes.append(style_hp)
+        except Exception:
+            pass
+
+        if sizes:
+            return max(sizes)
+    except Exception:
+        pass
+    return None
+
+
 def _element_text_contains_summary(el: OxmlElement) -> bool:
     """Deep-scan an XML element for any text node containing 'summary' (case-insensitive).
 
@@ -162,6 +263,41 @@ def _block_contains_summary_deep(block: BlockItem) -> Tuple[bool, bool]:
     if isinstance(block, Table):
         return _element_text_contains_summary(block._element), False  # type: ignore[attr-defined]
     return False, False
+
+
+def _table_has_heading_like_ge(tbl: Table, anchor_level: Optional[int], anchor_font_size: Optional[int]) -> bool:
+    """Heuristically detect if a table starts a new section by containing a heading.
+
+    Checks the first few paragraphs across cells. Returns True if it finds a
+    paragraph that looks like a heading with level <= anchor_level or with
+    font size >= anchor heading's size.
+    """
+
+    try:
+        examined = 0
+        for row in tbl.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    text = p.text.strip()
+                    if not text:
+                        continue
+                    lower = text.lower()
+                    if "summary" in lower:
+                        continue
+                    headingish = _para_is_heading_like(p) or _text_is_headingish(text)
+                    lvl = _paragraph_heading_level(p)
+                    if lvl is not None and anchor_level is not None and lvl <= anchor_level:
+                        return True
+                    if headingish and anchor_font_size is not None:
+                        size = _paragraph_font_size_hint(p)
+                        if size is not None and size >= anchor_font_size:
+                            return True
+                    examined += 1
+                    if examined >= 5:
+                        return False
+    except Exception:
+        return False
+    return False
 
 
 def _select_summary_anchor(blocks: Sequence[BlockItem]) -> Optional[Tuple[int, bool]]:
@@ -205,25 +341,103 @@ def _locate_summary_range(blocks: Sequence[BlockItem]) -> Optional[Tuple[int, in
         return None
     anchor, anchor_is_table = anchor_info
 
-    # Determine the anchor heading level when the anchor is a paragraph.
+    # Determine the anchor heading level and size when the anchor is a paragraph.
     anchor_level: Optional[int] = None
+    anchor_font_size: Optional[int] = None
+    anchor_style_id: Optional[str] = None
+    anchor_style_name: Optional[str] = None
     if isinstance(blocks[anchor], Paragraph):
         anchor_level = _paragraph_heading_level(blocks[anchor])
+        anchor_font_size = _paragraph_font_size_hint(blocks[anchor])
+        try:
+            style = blocks[anchor].style
+            anchor_style_id = getattr(style, "style_id", None)
+            anchor_style_name = getattr(style, "name", None)
+        except Exception:
+            pass
+    # Fallback: if we can't determine a level (e.g., custom style), treat Summary
+    # as a mid-level heading (Heading 2 => level 1) so nested subheadings are kept.
+    if anchor_level is None:
+        anchor_level = 1
 
     end_idx = anchor + 1
     total = len(blocks)
+
+    stopped_due_to_heading = False
 
     for idx in range(anchor + 1, total):
         block = blocks[idx]
         if isinstance(block, Paragraph):
             text = block.text.strip()
             lower = text.lower()
-            if _para_is_heading_like(block) and "summary" not in lower:
-                # Stop at the next heading whose level is same or higher (<= anchor level).
-                next_level = _paragraph_heading_level(block)
-                if anchor_level is None or (next_level is not None and next_level <= anchor_level):
-                    break
-        end_idx = idx + 1
+            
+            # Skip empty paragraphs - include them but don't treat as boundaries
+            if not text:
+                end_idx = idx + 1
+                continue
+            
+            # Check if this paragraph is a heading (multiple criteria)
+            is_structural_heading = _para_is_heading_like(block)
+            next_level = _paragraph_heading_level(block)
+            
+            # Get block style information
+            try:
+                block_style = block.style
+                block_style_id = getattr(block_style, "style_id", None)
+                block_style_name = getattr(block_style, "name", None)
+            except Exception:
+                block_style_id = None
+                block_style_name = None
+            
+            # Check font size
+            next_size = _paragraph_font_size_hint(block) if anchor_font_size is not None else None
+            
+            # Determine if this is a peer section header (same or higher level)
+            is_peer_header = False
+            
+            # PRIORITY 1: Same style as Summary = peer header (unless it's just content with same style)
+            # Check style ID independently
+            if anchor_style_id is not None and block_style_id == anchor_style_id:
+                # Same style: only treat as header if it's also structurally a heading
+                # OR if it has heading-like text characteristics
+                if is_structural_heading or _text_is_headingish(text):
+                    is_peer_header = True
+            # Check style name independently (may match even if ID doesn't)
+            if anchor_style_name is not None and block_style_name == anchor_style_name:
+                if is_structural_heading or _text_is_headingish(text):
+                    is_peer_header = True
+            
+            # PRIORITY 2: Structural heading level check
+            if next_level is not None and next_level <= anchor_level:
+                is_peer_header = True
+            
+            # PRIORITY 3: Font size match + heading-like appearance
+            if not is_peer_header and next_level is None and anchor_font_size is not None:
+                if next_size is not None and next_size >= anchor_font_size:
+                    # Only treat as header if text looks heading-like
+                    if _text_is_headingish(text) or is_structural_heading:
+                        is_peer_header = True
+            
+            # Stop if we found a peer header (and it's not just mentioning "summary")
+            if is_peer_header and "summary" not in lower:
+                stopped_due_to_heading = True
+                break
+            
+            # Otherwise, include this paragraph in the summary section
+            end_idx = idx + 1
+            
+        elif isinstance(block, Table):
+            # Tables are included unless they contain a clear section header
+            if _table_has_heading_like_ge(block, anchor_level, anchor_font_size):
+                stopped_due_to_heading = True
+                break
+            end_idx = idx + 1
+
+    # Fallback: if we only captured the anchor (no following blocks), widen the range
+    # to include several subsequent blocks to avoid returning just the heading.
+    if end_idx == anchor + 1 and not stopped_due_to_heading:
+        widen_to = min(total, anchor + 6)  # keep up to 5 blocks after the anchor
+        end_idx = max(end_idx, widen_to)
 
     return anchor, end_idx
 
@@ -289,8 +503,13 @@ def _label_summary_heading_with_filename(doc: Document, filename: str) -> None:
     if target_para is None:
         return
 
-    suffix = f" ({filename})"
-    if target_para.text.endswith(suffix) or f"({filename})" in target_para.text:
+    # Remove .docx extension from filename for display
+    display_filename = filename
+    if display_filename.lower().endswith('.docx'):
+        display_filename = display_filename[:-5]  # Remove '.docx' (5 characters)
+
+    suffix = f" ({display_filename})"
+    if target_para.text.endswith(suffix) or f"({display_filename})" in target_para.text:
         return
 
     target_para.add_run(suffix)

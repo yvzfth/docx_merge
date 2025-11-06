@@ -3,7 +3,7 @@ Param()
 $ErrorActionPreference = 'Stop'
 
 # Build a Windows .exe using PyInstaller
-# Output: dist/SummaryCollector/SummaryCollector.exe
+# Output: dist/SummaryQuickMerge/SummaryQuickMerge.exe
 
 Set-Location (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location ..
@@ -16,12 +16,12 @@ if (-not $py) {
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
-Remove-Item -Recurse -Force build, dist, SummaryCollector.spec -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force build, dist, SummaryQuickMerge.spec -ErrorAction SilentlyContinue
 
 python -m PyInstaller `
   --windowed `
-  --name "SummaryCollector" `
+  --name "SummaryQuickMerge" `
   gui.py
 
-Write-Host "`nBuilt: dist/SummaryCollector/SummaryCollector.exe"
+Write-Host "`nBuilt: dist/SummaryQuickMerge/SummaryQuickMerge.exe"
 

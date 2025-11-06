@@ -6,7 +6,7 @@ This report explains, in plain language, what the application does, how it was d
 
 - **Goal**: Go through a parent folder’s subfolders, find Word `.docx` files, extract only the **Summary** section from each, and merge them into a single Word document.
 - **Keeps formatting**: Fonts, text styles, and images (including image sizes) are preserved.
-- **Labels each section**: The Summary heading is annotated with its source file name, like `Summary (document9.docx)`.
+- **Labels each section**: The Summary heading is annotated with its source file name (without .docx extension), like `Summary (document9)`.
 - **Order you expect**: Files are ordered using a human-friendly (natural) sort, so `document10.docx` correctly comes after `document9.docx`.
 - **Simple to run**: You pass the parent folder to scan, and the merged file is saved inside that folder by default.
 
@@ -19,16 +19,20 @@ This report explains, in plain language, what the application does, how it was d
 ### How we detect the “Summary” section
 
 - The app finds the paragraph most likely to be the Summary heading using a small heuristic:
-  - **Prefers headings** (e.g., normal Word “Heading” styles).
-  - **Checks for the word ‘summary’** (case-insensitive).
+  - **Prefers headings** (e.g., normal Word "Heading" styles).
+  - **Checks for the word 'summary'** (case-insensitive).
   - **Prefers headings near the beginning or end** of the document (common for summaries).
-- Once the Summary heading is found, the app includes content **from that heading up to the next heading** (or to the end of the document if there isn’t another heading).
+- Once the Summary heading is found, the app includes **all content paragraphs** below it until the next section header. The next section header is detected by:
+  - **Same style** as the Summary heading (most reliable indicator)
+  - **Same or higher heading level** (structural hierarchy)
+  - **Same or larger font size** combined with heading-like text characteristics
+- The next section header and its content are **excluded** from the Summary section.
 
 ### How merging works without breaking anything
 
 1. Collect `.docx` files from subfolders of the parent folder (optionally including files in the parent folder itself).
-2. For each file, **trim the document in place** to only the Summary range.
-3. Append the **source filename** to the Summary heading, e.g., `Summary (document3.docx)`.
+2. For each file, **trim the document in place** to only the Summary range (including all content paragraphs below the Summary heading until the next section header).
+3. Append the **source filename** (without .docx extension) to the Summary heading, e.g., `Summary (document3)`.
 4. Merge the trimmed documents into a single output using a **document-level composer**. This preserves styles, images, and sizes.
 
 ### Getting the order right (natural/human sorting)
@@ -109,10 +113,11 @@ This tool requires Python 3.10 or newer and a few Python packages.
 
 - **Initial collector**: A working scan of subfolders that extracted Summary text.
 - **Preservation upgrade**: Switched from copying content programmatically (which can lose styles/images) to trimming documents in place and performing **document-level merging** to **fully preserve** formatting and images.
-- **Section labeling**: Appends the source filename to each Summary heading, e.g., `Summary (document1.docx)`.
+- **Section labeling**: Appends the source filename (without .docx extension) to each Summary heading, e.g., `Summary (document1)`.
 - **Simpler CLI**: Now takes the **parent folder** as a positional argument and saves the output inside that folder by default.
 - **User docs**: Added in-file comments at **critical points** and created a **README** with requirements and usage.
 - **Correct ordering**: Implemented **natural sorting** of files so numeric parts sort like humans expect (9 before 10).
+- **Improved section detection**: Enhanced Summary section boundary detection to include all content paragraphs and accurately stop at the next section header using style matching, heading levels, and font size comparisons. Filenames are displayed without the .docx extension for cleaner labels.
 
 ### What to expect from the output
 
@@ -122,8 +127,7 @@ This tool requires Python 3.10 or newer and a few Python packages.
 
 ### Limitations and tips
 
-- The Summary detection uses heuristics; it works best when the Summary is in a paragraph that contains the word “Summary” and ideally uses a heading style.
-- If an individual document has no recognizable Summary heading, that file is simply skipped.
+- The Summary detection uses heuristics; it works best when the Summary is in a paragraph that contains the word "Summary" and ideally uses a heading style. The detection includes all content paragraphs below the Summary heading and stops at the next section header (identified by matching style, heading level, or font size). This ensures complete Summary sections are captured while excluding subsequent sections.
 
 ### Files of interest
 

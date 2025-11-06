@@ -3,6 +3,10 @@ from __future__ import annotations
 import threading
 import subprocess
 from pathlib import Path
+import os
+import platform
+import logging
+import traceback
 import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -10,12 +14,14 @@ from tkinter import ttk, filedialog, messagebox
 from main import collect_summaries
 
 
-class SummaryCollectorApp(tk.Tk):
+class SummaryQuickMergeApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("DOCX Summary Collector")
+        self.title("SummaryQuickMerge")
         self.geometry("640x260")
         self.minsize(580, 240)
+
+        self._init_logging()
 
         self.parent_dir_var = tk.StringVar()
         self.output_file_var = tk.StringVar()
@@ -75,6 +81,29 @@ class SummaryCollectorApp(tk.Tk):
 
     def _bind_events(self) -> None:
         self.parent_dir_var.trace_add("write", lambda *_: self._maybe_set_default_output())
+
+    # Logging setup
+    def _log_dir(self) -> Path:
+        # Write logs to Desktop for easy access across platforms
+        return Path.home() / "Desktop" / "SummaryQuickMergeLogs"
+
+    def _log_path(self) -> Path:
+        return self._log_dir() / "app.log"
+
+    def _init_logging(self) -> None:
+        try:
+            log_dir = self._log_dir()
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = self._log_path()
+            if not logging.getLogger().handlers:
+                logging.basicConfig(
+                    filename=str(log_path),
+                    level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(message)s",
+                )
+            logging.info("SummaryQuickMerge started")
+        except Exception:
+            pass
 
     def _browse_parent(self) -> None:
         initialdir = self._safe_parent_dir()
@@ -171,6 +200,7 @@ class SummaryCollectorApp(tk.Tk):
                 self.after(0, update)
 
             try:
+                logging.info("Starting collection: parent=%s output=%s include_root=%s", parent, output, include_root)
                 count = collect_summaries(
                     target_root=Path(parent),
                     output_path=Path(output),
@@ -179,6 +209,9 @@ class SummaryCollectorApp(tk.Tk):
                     should_cancel=should_cancel,
                     errors=errors,
                 )
+                if errors:
+                    for e in errors[:50]:
+                        logging.warning("File error: %s", e)
                 def done_ok() -> None:
                     self._set_running(False)
                     # Build detailed completion message
@@ -213,23 +246,31 @@ class SummaryCollectorApp(tk.Tk):
                     messagebox.showerror("Timeout", "The operation timed out after 60 seconds and was stopped.")
                 self.after(0, done_timeout)
             except Exception as exc:
+                # Log full traceback for packaged app diagnostics
+                try:
+                    logging.exception("Unhandled error during collection: %s", exc)
+                except Exception:
+                    pass
                 def done_err() -> None:
                     self._set_running(False)
                     self.status_var.set("Failed. See details.")
-                    messagebox.showerror(
-                        "Error",
-                        (
-                            "An unexpected error occurred.\n\n" 
-                            f"Type: {type(exc).__name__}\nMessage: {exc}"
-                        ),
+                    # Show full traceback directly in the popup
+                    tb = traceback.format_exc()
+                    # Trim very long traces to avoid UI issues
+                    if len(tb) > 8000:
+                        tb = tb[:7800] + "\n... (truncated)"
+                    details = (
+                        "An unexpected error occurred.\n\n"
+                        f"Type: {type(exc).__name__}\nMessage: {exc}\n\nTraceback:\n{tb}"
                     )
+                    messagebox.showerror("Error", details)
                 self.after(0, done_err)
 
         threading.Thread(target=worker, daemon=True).start()
 
 
 if __name__ == "__main__":
-    app = SummaryCollectorApp()
+    app = SummaryQuickMergeApp()
     app.mainloop()
 
 

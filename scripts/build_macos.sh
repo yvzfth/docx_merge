@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Build a macOS app bundle using PyInstaller
-# Output: dist/SummaryCollector.app
+# Output: dist/SummaryQuickMerge.app
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -20,13 +20,13 @@ fi
 "$PY" -m pip install -r requirements.txt
 
 # Clean previous builds
-rm -rf build dist "SummaryCollector.spec" || true
+rm -rf build dist "SummaryQuickMerge.spec" || true
 
 # Build app bundle
 "$PY" -m PyInstaller \
   --windowed \
-  --name "SummaryCollector" \
+  --name "SummaryQuickMerge" \
   gui.py
 
-echo "\nBuilt: dist/SummaryCollector.app"
+echo "\nBuilt: dist/SummaryQuickMerge.app"
 
