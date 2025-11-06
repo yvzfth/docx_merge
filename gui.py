@@ -1,4 +1,22 @@
 from __future__ import annotations
+"""
+GUI entry-point for SummaryQuickMerge.
+
+Key behaviors:
+- Delegates Summary extraction/merge to main.collect_summaries.
+- Provides progress reporting and responsive UI via a background thread.
+- Writes diagnostic logs to ~/Desktop/SummaryQuickMergeLogs/app.log so users can
+  easily access logs in packaged builds.
+- On unexpected failures, shows a popup containing a full traceback (truncated
+  if extremely long). This is intentional to surface errors in .app builds where
+  a console is not available.
+
+Packaging note (PyInstaller):
+- The standalone app requires template/data files from python-docx and
+  docxcompose. Our PyInstaller spec collects those packages' data and adds
+  hidden imports for lxml C extensions (lxml.etree, lxml._elementpath). If you
+  customize packaging, ensure those are included or merging will fail at runtime.
+"""
 
 import threading
 import subprocess
@@ -84,7 +102,8 @@ class SummaryQuickMergeApp(tk.Tk):
 
     # Logging setup
     def _log_dir(self) -> Path:
-        # Write logs to Desktop for easy access across platforms
+        # Write logs to Desktop for easy access across platforms and for users
+        # running the packaged .app where ~/Library/Logs may not be obvious.
         return Path.home() / "Desktop" / "SummaryQuickMergeLogs"
 
     def _log_path(self) -> Path:
@@ -95,6 +114,9 @@ class SummaryQuickMergeApp(tk.Tk):
             log_dir = self._log_dir()
             log_dir.mkdir(parents=True, exist_ok=True)
             log_path = self._log_path()
+            # Initialize file-based logging only once. This captures warnings
+            # from collect_summaries (per-file failures) and any unhandled
+            # exceptions during the background job.
             if not logging.getLogger().handlers:
                 logging.basicConfig(
                     filename=str(log_path),
@@ -254,7 +276,9 @@ class SummaryQuickMergeApp(tk.Tk):
                 def done_err() -> None:
                     self._set_running(False)
                     self.status_var.set("Failed. See details.")
-                    # Show full traceback directly in the popup
+                    # Show full traceback directly in the popup so users running
+                    # the packaged .app get immediate diagnostic details without
+                    # needing to locate a log file.
                     tb = traceback.format_exc()
                     # Trim very long traces to avoid UI issues
                     if len(tb) > 8000:

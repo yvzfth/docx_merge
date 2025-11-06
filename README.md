@@ -112,6 +112,13 @@ Notes:
 
 - First run may be blocked by Gatekeeper. Control-click the app → Open.
 - To share, zip the `.app` or run a DMG packager if desired.
+- The build script prefers `SummaryQuickMerge.spec`, which bundles required data for `python-docx`/`docxcompose` and includes `lxml` hidden imports. If you customize packaging, ensure these are included or the app may fail to merge.
+
+Packaging details:
+
+- `python-docx` ships template/data files that must be present at runtime; we collect them via PyInstaller’s `collect_data_files`.
+- `docxcompose` may also require data files; those are likewise collected.
+- `lxml` uses compiled C extensions; hidden imports `lxml.etree` and `lxml._elementpath` are explicitly included to avoid runtime import errors in the bundled app.
 
 #### Windows
 
@@ -127,6 +134,18 @@ Notes:
 
 - If SmartScreen warns, choose “More info” → “Run anyway”.
 - Ship the entire folder under `dist\SummaryQuickMerge` or re-run with `--onefile` (advanced).
+- The build script prefers `SummaryQuickMerge.spec`, which bundles required data for `python-docx`/`docxcompose` and includes `lxml` hidden imports.
+
+Packaging details:
+
+- Data files from `python-docx` and `docxcompose` are collected so templates/styles are available in the bundled app.
+- Hidden imports for `lxml` (`lxml.etree`, `lxml._elementpath`) are added so XML parsing works in the packaged binary.
+
+### Troubleshooting (packaged app)
+
+- If the app fails during merging, a popup will show the full error and traceback.
+- A background log is also written to: `~/Desktop/SummaryQuickMergeLogs/app.log`.
+- If you rebuilt the app without the spec file, rebuild using the provided scripts so template data is bundled correctly.
 
 ### How it works (high level)
 

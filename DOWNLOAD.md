@@ -47,11 +47,16 @@ If you prefer to build the application yourself:
    ```
 3. The built app will be in `dist/SummaryQuickMerge.app`
 
+Packaging details (for advanced users):
+
+- The build process uses a PyInstaller spec that collects `python-docx` and `docxcompose` data files and includes hidden imports for `lxml` (`lxml.etree`, `lxml._elementpath`). These are required so the bundled app can parse and write DOCX correctly.
+
 ### Troubleshooting macOS
 
 - **"App is damaged" error**: This is usually a Gatekeeper issue. Use Control-click → Open as described above.
 - **App won't open**: Check that you're running macOS 10.13 or later.
 - **Permission denied**: Make sure the app has execute permissions: `chmod +x SummaryQuickMerge.app`
+- **During use (merge fails)**: A popup will display the full error and traceback. A log is also written to `~/Desktop/SummaryQuickMergeLogs/app.log` for reference.
 
 ## Windows Installation
 
@@ -92,12 +97,17 @@ If you prefer to build the application yourself:
    ```
 3. The built executable will be in `dist\SummaryQuickMerge\SummaryQuickMerge.exe`
 
+Packaging details (for advanced users):
+
+- The build process uses a PyInstaller spec to collect data files from `python-docx` and `docxcompose` and to add hidden imports for `lxml` (`lxml.etree`, `lxml._elementpath`). Without these, the packaged binary may fail at merge time.
+
 ### Troubleshooting Windows
 
 - **SmartScreen warning**: This is normal for unsigned applications. Click "More info" → "Run anyway" on first launch.
 - **Antivirus false positive**: Some antivirus software may flag PyInstaller-built applications. Add an exception if needed.
 - **Missing DLL errors**: Ensure you have Windows 10 or later and all Windows updates installed.
 - **Permission denied**: Right-click the executable and select "Run as administrator" if needed.
+- **During use (merge fails)**: A popup will display the full error and traceback. A log is also written to `~/Desktop/SummaryQuickMergeLogs/app.log` if available.
 
 ## Using SummaryQuickMerge
 

@@ -22,11 +22,19 @@ fi
 # Clean previous builds
 rm -rf build dist "SummaryQuickMerge.spec" || true
 
-# Build app bundle
-"$PY" -m PyInstaller \
-  --windowed \
-  --name "SummaryQuickMerge" \
-  gui.py
+# Build app bundle (prefer spec if present for correct data collection)
+if [[ -f "SummaryQuickMerge.spec" ]]; then
+  "$PY" -m PyInstaller SummaryQuickMerge.spec
+else
+  "$PY" -m PyInstaller \
+    --windowed \
+    --name "SummaryQuickMerge" \
+    --collect-data docx \
+    --collect-data docxcompose \
+    --hidden-import lxml.etree \
+    --hidden-import lxml._elementpath \
+    gui.py
+fi
 
 echo "\nBuilt: dist/SummaryQuickMerge.app"
 

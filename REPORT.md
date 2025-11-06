@@ -118,6 +118,12 @@ This tool requires Python 3.10 or newer and a few Python packages.
 - **User docs**: Added in-file comments at **critical points** and created a **README** with requirements and usage.
 - **Correct ordering**: Implemented **natural sorting** of files so numeric parts sort like humans expect (9 before 10).
 - **Improved section detection**: Enhanced Summary section boundary detection to include all content paragraphs and accurately stop at the next section header using style matching, heading levels, and font size comparisons. Filenames are displayed without the .docx extension for cleaner labels.
+- **Reliable packaging**: Introduced a PyInstaller spec (`SummaryQuickMerge.spec`) that bundles `python-docx`/`docxcompose` data and `lxml` hidden imports so the packaged app behaves like the script.
+
+### Distribution and diagnostics
+
+- Build scripts prefer the spec file and fall back to CLI flags that collect the same data when the spec is unavailable.
+- When the packaged app encounters an error, a popup displays the full traceback. A background log is also written to `~/Desktop/SummaryQuickMergeLogs/app.log`.
 
 ### What to expect from the output
 
